@@ -5,12 +5,13 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPen,
     QPolygon,
@@ -226,7 +227,10 @@ class TimelineWidget(QWidget):
         if not (SEGMENT_TOP <= self._mouse_y <= SEGMENT_TOP + SEGMENT_HEIGHT):
             return -1
         for index, segment in enumerate(self._segments):
-            x1 = self.time_to_x(segment.start)
+            start = segment.start
+            if segment.requested_start is not None:
+                start = min(start, segment.requested_start)
+            x1 = self.time_to_x(start)
             x2 = self.time_to_x(segment.end)
             if x1 - 2 <= x <= x2 + 2:
                 return index
@@ -392,6 +396,8 @@ class TimelineWidget(QWidget):
             painter.setBrush(color)
             painter.drawRoundedRect(rect, 5, 5)
 
+            self._paint_included(painter, rect, segment, index)
+
             if index == self._selected:
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.setPen(QPen(QColor("#f2f5f6"), 2))
@@ -423,6 +429,58 @@ class TimelineWidget(QWidget):
         if self._hover_x >= 0:
             painter.setPen(QPen(QColor(255, 255, 255, 42), 1))
             painter.drawLine(self._hover_x, RULER_HEIGHT, self._hover_x, self.height())
+
+    def _paint_included(
+        self, painter: QPainter, rect: QRectF, segment: Segment, index: int
+    ) -> None:
+        """Shade footage included because the start snapped back to a keyframe."""
+        if segment.requested_start is None:
+            return
+        x_mark = self.time_to_x(min(segment.requested_start, segment.end))
+        left = rect.left()
+        right = min(rect.right(), x_mark)
+        if right - left <= 0.5:
+            return
+
+        selected = index == self._selected
+        path = QPainterPath()
+        path.addRoundedRect(rect, 5, 5)
+        painter.save()
+        painter.setClipPath(path)
+        painter.setClipRect(
+            QRectF(left, rect.top(), right - left, rect.height()),
+            Qt.ClipOperation.IntersectClip,
+        )
+
+        tint = QColor("#d8a657")
+        tint.setAlpha(80 if selected else 55)
+        painter.fillRect(QRectF(left, rect.top(), right - left, rect.height()), tint)
+
+        hatch = QColor("#d8a657")
+        hatch.setAlpha(150 if selected else 110)
+        painter.setPen(QPen(hatch, 1))
+        height = rect.height()
+        x = left - height
+        while x < right:
+            painter.drawLine(QPointF(x, rect.bottom()), QPointF(x + height, rect.top()))
+            x += 7
+        painter.restore()
+
+        painter.setPen(QPen(QColor("#f0c674"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(
+            QPointF(right, rect.top() + 2), QPointF(right, rect.bottom() - 2)
+        )
+
+        if right - left >= 70:
+            font = QFont(self.font())
+            font.setPointSize(7)
+            painter.setFont(font)
+            painter.setPen(QColor("#f5d9a2"))
+            painter.drawText(
+                QRectF(left + 26, rect.top() + 2, right - left - 30, 12),
+                int(Qt.AlignmentFlag.AlignCenter),
+                "included",
+            )
 
     def _paint_keyframes(self, painter: QPainter, width: int) -> None:
         band = QRect(0, KEYFRAME_TOP, width, KEYFRAME_HEIGHT)

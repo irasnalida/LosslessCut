@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QLabel
 import losslesscut.main_window as main_window_module
 from losslesscut.models import Segment
 from losslesscut.segments import SegmentPanel
-from losslesscut.timeline import TimelinePanel
+from losslesscut.timeline import SEGMENT_HEIGHT, SEGMENT_TOP, TimelinePanel
 
 
 def test_timeline_renders(qtbot) -> None:
@@ -58,6 +58,35 @@ def test_segment_panel_reports_snapped_start(qtbot, sample_media) -> None:
     assert snapped.maximumHeight() == 84
     assert panel._cards[1].minimumHeight() == 66
     assert not panel.grab().toImage().isNull()
+
+
+def test_timeline_marks_included_footage(qtbot) -> None:
+    panel = TimelinePanel()
+    qtbot.addWidget(panel)
+    panel.resize(1000, 200)
+    panel.timeline.resize(1000, 200)
+    panel.set_media(10.0, [], 30.0)
+    panel.set_segments([Segment(3.0, 6.0, requested_start=4.0)], 0)
+
+    image = panel.timeline.grab().toImage()
+    assert image.width() == 1000
+
+    def amber_pixels(start: int, end: int) -> int:
+        count = 0
+        for x in range(start, end):
+            for y in range(SEGMENT_TOP + 8, SEGMENT_TOP + SEGMENT_HEIGHT - 8):
+                pixel = image.pixelColor(x, y)
+                if pixel.red() > 100 and pixel.red() > pixel.blue() + 10:
+                    count += 1
+        return count
+
+    # The requested mark was 4.0s; the export starts at 3.0s, so 3.0-4.0 is shaded.
+    assert amber_pixels(305, 395) > 50
+    assert amber_pixels(420, 590) < 5
+
+    panel.timeline._hover_y = SEGMENT_TOP + 10
+    assert panel.timeline._segment_at(350) == 0
+    assert panel.timeline._segment_at(290) == -1
 
 
 def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> None:
