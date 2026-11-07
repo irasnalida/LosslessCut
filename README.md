@@ -40,6 +40,9 @@ Versions and licenses are documented in `src/losslesscut/assets/README.md`.
 - [uv](https://docs.astral.sh/uv/)
 - `ffmpeg` and `ffprobe` available on `PATH`
 
+The built executable does not need Python. It finds ffmpeg in an `ffmpeg\` folder
+beside the executable, through `LOSSLESSCUT_FFMPEG_DIR`, or on `PATH`.
+
 On Windows, for example:
 
 ```powershell
@@ -75,6 +78,48 @@ You can also pass a file directly:
 
 ```powershell
 uv run losslesscut "C:\Videos\movie.mp4"
+```
+
+## Building a standalone executable
+
+Build a folder-based executable with PyInstaller:
+
+```powershell
+uv sync
+uv run python scripts/build_exe.py
+```
+
+The result is `dist\LosslessCut\LosslessCut.exe`. The folder contains the Python
+runtime, PySide6, and the bundled fonts/icons, so the target machine does not need
+Python installed.
+
+Options:
+
+```powershell
+# Keep a console window for debugging
+uv run python scripts/build_exe.py --console
+
+# Copy ffmpeg and ffprobe from PATH into dist\LosslessCut\ffmpeg
+uv run python scripts/build_exe.py --with-ffmpeg
+
+# Use specific binaries
+uv run python scripts/build_exe.py --with-ffmpeg --ffmpeg-dir C:\tools\ffmpeg\bin
+
+# Verify the frozen app (exit code 0 means everything loaded)
+dist\LosslessCut\LosslessCut.exe --self-check
+```
+
+ffmpeg is not bundled by default. At runtime it is searched in this order:
+
+1. `LOSSLESSCUT_FFMPEG_DIR`
+2. `ffmpeg\` beside the executable
+3. the executable directory
+4. `PATH`
+
+`build\` and `dist\` are ignored by git. Regenerate the application icon with:
+
+```powershell
+uv run python scripts/make_app_icon.py
 ```
 
 ## Usage

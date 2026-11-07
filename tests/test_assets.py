@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtGui import QFontDatabase, QIcon
 
-from losslesscut.icons import ICON_FILES, icon
+from losslesscut.icons import ASSETS_DIR, ICON_FILES, icon
 from losslesscut.theme import load_fonts
 
 
@@ -11,6 +11,14 @@ def test_inter_font_is_bundled(qapp) -> None:
     family = load_fonts()
     assert family == "Inter"
     assert "Inter" in QFontDatabase.families()
+
+
+def test_app_icon_is_bundled(qapp) -> None:
+    path = ASSETS_DIR / "app.ico"
+    assert path.exists()
+    rendered = QIcon(str(path))
+    assert not rendered.isNull()
+    assert not rendered.pixmap(32, 32).isNull()
 
 
 @pytest.mark.parametrize("name", sorted(ICON_FILES))
