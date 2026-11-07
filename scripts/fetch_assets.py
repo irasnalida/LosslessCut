@@ -59,6 +59,8 @@ ICON_NAMES = (
     "x",
 )
 
+PHOSPHOR_FILL_NAMES = ("scissors",)
+
 
 def _download(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "losslesscut-assets"})
@@ -101,6 +103,9 @@ def fetch_icons(force: bool) -> None:
     for name in ICON_NAMES:
         url = f"{PHOSPHOR_BASE}/assets/regular/{name}.svg"
         _write(ICON_DIR / f"{name}.svg", _download(url), force)
+    for name in PHOSPHOR_FILL_NAMES:
+        url = f"{PHOSPHOR_BASE}/assets/fill/{name}-fill.svg"
+        _write(ICON_DIR / f"{name}-fill.svg", _download(url), force)
     _write(ICON_DIR / "LICENSE.txt", _download(f"{PHOSPHOR_BASE}/LICENSE"), force)
 
 

@@ -10,10 +10,12 @@ These files are bundled with LosslessCut so the application works offline.
 
 ## Icons
 
-- **Phosphor Core 2.0.8** (regular weight) — <https://github.com/phosphor-icons/core>
+- **Phosphor Core 2.0.8** (regular and fill weights) — <https://github.com/phosphor-icons/core>
 - License: MIT (`icons/LICENSE.txt`)
-- Only the SVGs used by the UI are included.
-- `app.ico` is generated from `icons/scissors.svg` by `scripts/make_app_icon.py`.
+- Only the SVGs used by the UI are included. `scissors-fill.svg` is used for the
+  application icon.
+- `app.ico` is generated from `icons/scissors-fill.svg` on a transparent
+  background by `scripts/make_app_icon.py`.
 
 ## Refreshing
 

@@ -34,6 +34,7 @@ ICON_FILES: dict[str, str] = {
     "pause": "pause.svg",
     "play": "play.svg",
     "scissors": "scissors.svg",
+    "scissors-fill": "scissors-fill.svg",
     "skip-back": "skip-back.svg",
     "skip-forward": "skip-forward.svg",
     "trash": "trash.svg",
