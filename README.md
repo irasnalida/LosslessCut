@@ -22,6 +22,17 @@ ffmpeg.
 - Silent, frame-accurate preview decoded by ffmpeg. Works with any codec ffmpeg can decode.
 - Background metadata/keyframe scanning, real export progress and cancellation.
 
+## Bundled assets
+
+The application ships its visual assets so it works fully offline:
+
+- [Inter](https://github.com/rsms/inter) 4.1 for the UI typography (SIL Open Font License 1.1).
+- [Phosphor Icons](https://github.com/phosphor-icons/core) 2.0.8 regular weight for the
+  interface icons (MIT).
+
+Versions and licenses are documented in `src/losslesscut/assets/README.md`.
+`scripts/fetch_assets.py` refreshes the pinned assets.
+
 ## Requirements
 
 - Python 3.12+
@@ -132,7 +143,9 @@ file that ffmpeg can read can be previewed even if the operating system cannot p
 ```text
 src/losslesscut/
   app.py            application entry point
-  theme.py          dark Fusion palette and stylesheet
+  theme.py          dark Fusion palette, Inter font and stylesheet
+  icons.py          Phosphor SVG loading, recolouring and caching
+  assets/           bundled Inter fonts, Phosphor icons and licenses
   models.py         media/segment models, timecode and snapping helpers
   ffmpeg_utils.py   binary discovery and subprocess helpers
   ffprobe.py        metadata and keyframe discovery
@@ -142,6 +155,8 @@ src/losslesscut/
   exporter.py       lossless cut/merge jobs with progress and cancel
   workers.py        background probe workers
   main_window.py    window, menus, drag and drop, export flow
+scripts/
+  fetch_assets.py   downloads the pinned font and icon assets
 tests/              unit, ffmpeg integration and Qt smoke tests
 ```
 

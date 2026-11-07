@@ -48,6 +48,10 @@ def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> 
     window.show()
     assert window.windowTitle() == "LosslessCut"
     assert not window.export_action.isEnabled()
+    assert not window.play_button.icon().isNull()
+    assert not window.split_action.icon().isNull()
+    assert not window.export_action.icon().isNull()
+    assert not window.open_action.icon().isNull()
 
     window.media = sample_media
     window.keyframes = list(sample_media.keyframes)
