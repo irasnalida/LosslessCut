@@ -47,6 +47,7 @@ ICON_NAMES = (
     "folder-open",
     "folder-simple",
     "git-merge",
+    "hand-pointing",
     "magnifying-glass-minus",
     "magnifying-glass-plus",
     "pause",

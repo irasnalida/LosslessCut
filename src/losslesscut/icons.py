@@ -28,6 +28,7 @@ ICON_FILES: dict[str, str] = {
     "folder-open": "folder-open.svg",
     "folder-simple": "folder-simple.svg",
     "git-merge": "git-merge.svg",
+    "hand-pointing": "hand-pointing.svg",
     "magnifying-glass-minus": "magnifying-glass-minus.svg",
     "magnifying-glass-plus": "magnifying-glass-plus.svg",
     "pause": "pause.svg",
