@@ -42,6 +42,8 @@ from .models import (
     Segment,
     format_size,
     format_timecode,
+    keyframe_at_or_after,
+    keyframe_at_or_before,
     nearest_keyframe,
     next_keyframe,
     parse_image_timestamp,
@@ -155,6 +157,16 @@ class MainWindow(QMainWindow):
         self.end_button = self._media_button(
             "skip-forward", "Go to end (End)", self._go_end
         )
+        self.mark_start_button = self._media_button(
+            "hand-pointing",
+            "Mark segment start at playhead ([)",
+            self._mark_segment_start,
+        )
+        self.mark_end_button = self._media_button(
+            "hand-pointing",
+            "Extend the previous segment to the playhead (])",
+            self._mark_segment_end,
+        )
 
         fixed_font = QFont("Inter")
         fixed_font.setPointSize(11)
@@ -170,6 +182,8 @@ class MainWindow(QMainWindow):
         self.keyframe_indicator = QLabel("No keyframes", bar)
         self.keyframe_indicator.setStyleSheet("color: #7f8a91;")
 
+        layout.addWidget(self.mark_start_button)
+        layout.addSpacing(2)
         for widget in (
             self.start_button,
             self.prev_keyframe_button,
@@ -180,6 +194,8 @@ class MainWindow(QMainWindow):
             self.end_button,
         ):
             layout.addWidget(widget)
+        layout.addSpacing(2)
+        layout.addWidget(self.mark_end_button)
 
         layout.addSpacing(12)
         layout.addWidget(self.time_label)
@@ -220,6 +236,18 @@ class MainWindow(QMainWindow):
             "&Split at playhead", "S", self._split_at_playhead, "scissors"
         )
         self.split_action.setToolTip("Split the active segment at the nearest keyframe")
+        self.mark_start_action = self._action(
+            "Mark segment start", "[", self._mark_segment_start, "hand-pointing"
+        )
+        self.mark_start_action.setToolTip(
+            "Start a new segment at the keyframe at or before the playhead"
+        )
+        self.mark_end_action = self._action(
+            "Mark segment end", "]", self._mark_segment_end, "hand-pointing"
+        )
+        self.mark_end_action.setToolTip(
+            "Extend the selected segment to the keyframe at or after the playhead"
+        )
         self.delete_action = self._action(
             "&Delete segment", "Del", self._delete_selected, "trash"
         )
@@ -279,6 +307,8 @@ class MainWindow(QMainWindow):
             self.export_action,
             self.export_merged_action,
             self.split_action,
+            self.mark_start_action,
+            self.mark_end_action,
             self.delete_action,
             self.reset_action,
             self.play_action,
@@ -327,6 +357,8 @@ class MainWindow(QMainWindow):
 
         segment_menu = menu.addMenu("&Segments")
         segment_menu.addAction(self.split_action)
+        segment_menu.addAction(self.mark_start_action)
+        segment_menu.addAction(self.mark_end_action)
         segment_menu.addAction(self.delete_action)
         segment_menu.addAction(self.reset_action)
         segment_menu.addSeparator()
@@ -683,6 +715,93 @@ class MainWindow(QMainWindow):
             f"Split at keyframe {format_timecode(left.end)}"
         )
 
+    def _mark_segment_start(self) -> None:
+        if self.media is None:
+            return
+        start = keyframe_at_or_before(self.keyframes, self.current_time)
+        if start is None:
+            start = 0.0
+        start = min(max(0.0, start), self.media.duration)
+        end = keyframe_at_or_after(self.keyframes, start + 1e-3)
+        if end is None:
+            end = self.media.duration
+        end = min(max(start, end), self.media.duration)
+        if end - start <= 1e-6:
+            self.statusBar().showMessage(
+                "Cannot start a segment at the end of the video"
+            )
+            return
+
+        existing = next(
+            (
+                index
+                for index, segment in enumerate(self.segments)
+                if abs(segment.start - start) < 1e-3
+                and abs(segment.end - end) < 1e-3
+            ),
+            None,
+        )
+        if existing is not None:
+            selected = existing
+            message = (
+                f"Selected existing segment {format_timecode(start)} – "
+                f"{format_timecode(end)}"
+            )
+        else:
+            if self._is_default_full_segment():
+                self.segments = []
+            self.segments.append(Segment(start, end, True))
+            selected = len(self.segments) - 1
+            message = (
+                f"Started segment {format_timecode(start)} – {format_timecode(end)}"
+            )
+
+        self.selected_segment = selected
+        self._refresh_segments()
+        self._seek_to(start)
+        self.timeline_panel.ensure_time_visible(start)
+        self.statusBar().showMessage(message, 8000)
+
+    def _mark_segment_end(self) -> None:
+        if self.media is None:
+            return
+        if not self.segments:
+            self.statusBar().showMessage("Mark a segment start first")
+            return
+        if 0 <= self.selected_segment < len(self.segments):
+            index = self.selected_segment
+        else:
+            index = len(self.segments) - 1
+        segment = self.segments[index]
+        if self.current_time < segment.start - 1e-6:
+            self.statusBar().showMessage(
+                "Move the playhead after the segment start at "
+                f"{format_timecode(segment.start)}"
+            )
+            return
+
+        end = keyframe_at_or_after(self.keyframes, self.current_time)
+        if end is None:
+            end = self.media.duration
+        end = min(max(0.0, end), self.media.duration)
+        if end <= segment.start + 1e-6:
+            self.statusBar().showMessage("Move the playhead after the segment start")
+            return
+        if end <= segment.end + 1e-6:
+            self.statusBar().showMessage(
+                f"Move the playhead past the segment end at "
+                f"{format_timecode(segment.end)}"
+            )
+            return
+
+        self.segments[index] = Segment(segment.start, end, segment.enabled)
+        self.selected_segment = index
+        self._refresh_segments()
+        self.timeline_panel.ensure_time_visible(self.current_time)
+        self.statusBar().showMessage(
+            f"Extended segment to {format_timecode(end)}", 8000
+        )
+
     def _delete_selected(self) -> None:
         if not (0 <= self.selected_segment < len(self.segments)):
             return
@@ -1025,6 +1144,8 @@ class MainWindow(QMainWindow):
         self.export_action.setEnabled(has_media and has_segments and not busy)
         self.export_merged_action.setEnabled(has_media and has_segments and not busy)
         self.split_action.setEnabled(has_media and has_segments and not busy)
+        self.mark_start_action.setEnabled(has_media and not busy)
+        self.mark_end_action.setEnabled(has_media and has_segments and not busy)
         self.reset_action.setEnabled(has_media and not busy)
         self.segments_panel.export_button.setEnabled(has_media and has_segments and not busy)
         self.segments_panel.mode_combo.setEnabled(not busy)
@@ -1038,6 +1159,8 @@ class MainWindow(QMainWindow):
             self.end_button,
         ):
             button.setEnabled(has_media)
+        self.mark_start_button.setEnabled(has_media and not busy)
+        self.mark_end_button.setEnabled(has_media and has_segments and not busy)
 
     def _update_output_label(self) -> None:
         if self.output_dir is None:

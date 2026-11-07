@@ -243,6 +243,22 @@ def next_keyframe(times: list[float], value: float) -> float | None:
     return times[index]
 
 
+def keyframe_at_or_before(times: list[float], value: float) -> float | None:
+    """Return the last keyframe at or before *value*."""
+    index = bisect_right(times, value + 1e-6)
+    if index <= 0:
+        return None
+    return times[index - 1]
+
+
+def keyframe_at_or_after(times: list[float], value: float) -> float | None:
+    """Return the first keyframe at or after *value*."""
+    index = bisect_left(times, value - 1e-6)
+    if index >= len(times):
+        return None
+    return times[index]
+
+
 _IMAGE_TIMESTAMP_RE = re.compile(r"[Tt](\d{2,})'(\d{2})'(\d{2})'(\d{1,3})")
 
 
