@@ -665,6 +665,21 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- segments
     def _refresh_segments(self) -> None:
+        selected = (
+            self.segments[self.selected_segment]
+            if 0 <= self.selected_segment < len(self.segments)
+            else None
+        )
+        self.segments.sort(key=lambda segment: (segment.start, segment.end))
+        if selected is not None:
+            self.selected_segment = next(
+                (
+                    index
+                    for index, segment in enumerate(self.segments)
+                    if segment is selected
+                ),
+                -1,
+            )
         self.segments_panel.set_segments(self.segments, self.media, self.selected_segment)
         self.timeline_panel.set_segments(self.segments, self.selected_segment)
         self.timeline_panel.set_current_time(self.current_time)
@@ -913,8 +928,8 @@ class MainWindow(QMainWindow):
             self.timeline_panel.ensure_time_visible(self.current_time)
 
         parts: list[str] = []
-        if added == 1 and selected >= 0:
-            segment = self.segments[selected]
+        if added == 1 and self.selected_segment >= 0:
+            segment = self.segments[self.selected_segment]
             parts.append(
                 f"Created segment {format_timecode(segment.start)} – "
                 f"{format_timecode(segment.end)}"
