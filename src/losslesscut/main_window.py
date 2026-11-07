@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .exporter import Exporter
+from .exporter import Exporter, snapped_export_message
 from .ffmpeg_utils import check_binaries
 from .ffprobe import probe_keyframes, probe_media
 from .icons import DEFAULT_COLOR, MUTED_COLOR, icon
@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
         self._probe_worker: Worker | None = None
         self._keyframe_worker: Worker | None = None
         self._keyframes_loading = False
+        self._keyframes_complete = False
         self._pending_images: list[Path] = []
         self._export_worker: Exporter | None = None
         self._export_dialog: QProgressDialog | None = None
@@ -474,6 +475,7 @@ class MainWindow(QMainWindow):
         self.media = None
         self.keyframes = []
         self._keyframes_loading = False
+        self._keyframes_complete = False
         self._pending_images = []
         self.segments = []
         self.selected_segment = -1
@@ -525,6 +527,7 @@ class MainWindow(QMainWindow):
         )
         self._keyframe_worker = worker
         self._keyframes_loading = True
+        self._keyframes_complete = False
         self._workers.append(worker)
         self._pool.start(worker)
 
@@ -536,6 +539,7 @@ class MainWindow(QMainWindow):
         if token != self._load_id or not isinstance(keyframes, list):
             return
         self._keyframes_loading = False
+        self._keyframes_complete = True
         self.keyframes = sorted(float(value) for value in keyframes)
         if not self.keyframes:
             self.keyframes = [0.0]
@@ -570,6 +574,7 @@ class MainWindow(QMainWindow):
         if token != self._load_id:
             return
         self._keyframes_loading = False
+        self._keyframes_complete = False
         pending = len(self._pending_images)
         self._pending_images.clear()
         self.keyframe_count_label.setText("Keyframes: unavailable")
@@ -973,6 +978,28 @@ class MainWindow(QMainWindow):
             self._update_output_label()
             self.statusBar().showMessage(f"Output folder: {folder}")
 
+    def _confirm_snapped_export(self, segments: list[Segment]) -> bool:
+        """Warn when a lossless cut starts before the marked time."""
+        message = snapped_export_message(segments)
+        if message is None:
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Lossless cut starts earlier")
+        box.setText("Some segments start at the previous keyframe.")
+        box.setInformativeText(
+            f"{message}\n\n"
+            "Lossless stream copy cannot start in the middle of a GOP, so the "
+            "footage before your mark is included. The rest of each segment "
+            "matches your marks."
+        )
+        export_button = box.addButton("Export anyway", QMessageBox.ButtonRole.AcceptRole)
+        cancel_button = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+        return box.clickedButton() is export_button
+
     def _start_export(self, mode_override: str | None = None) -> None:
         if self.media is None:
             return
@@ -985,6 +1012,9 @@ class MainWindow(QMainWindow):
             )
             return
         if self._exporting:
+            return
+        if not self._confirm_snapped_export(enabled_segments):
+            self.statusBar().showMessage("Export cancelled", 4000)
             return
         output_dir = self.output_dir or self.media.path.parent
         mode = mode_override or self.segments_panel.export_mode()
@@ -1004,6 +1034,7 @@ class MainWindow(QMainWindow):
             output_dir,
             mode=mode,
             all_tracks=self.all_tracks_checkbox.isChecked(),
+            keyframes_complete=self._keyframes_complete,
             parent=self,
         )
         dialog.canceled.connect(self._cancel_export)

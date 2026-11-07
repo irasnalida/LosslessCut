@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,17 +13,45 @@ from losslesscut.exporter import (
     cut_args,
     merged_suffix,
     next_output_index,
+    seek_start,
+    snapped_export_message,
     unique_path,
 )
 from losslesscut.ffprobe import probe_media
 from losslesscut.models import Segment
 
 
+def _video_packets(path: Path) -> list[dict[str, object]]:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        pytest.skip("ffprobe is not available")
+    result = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts_time,size,flags",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return list(json.loads(result.stdout)["packets"])
+
+
 def test_cut_args_stream_copy(tmp_path: Path) -> None:
     output = tmp_path / "out.mp4"
     args = cut_args(Path("input.mkv"), 1.0, 2.0, output, all_tracks=True)
-    assert "-ss" in args
-    assert "-t" in args
+    assert args[args.index("-ss") + 1] == "1.000000"
+    assert "-to" in args and args[args.index("-to") + 1] == "2.000000"
+    assert "-t" not in args
     assert args[args.index("-c") + 1] == "copy"
     assert "-map" in args and args[args.index("-map") + 1] == "0"
     assert "-movflags" in args
@@ -31,6 +62,53 @@ def test_cut_args_video_audio_only(tmp_path: Path) -> None:
     args = cut_args(Path("input.mp4"), 0.0, 1.0, tmp_path / "out.mkv", all_tracks=False)
     assert "0:v:0" in args
     assert "0:a?" in args
+
+
+def test_seek_start_stays_inside_gop() -> None:
+    assert seek_start(2.0, 6.0, next_keyframe=3.0) == pytest.approx(2.9)
+
+
+def test_seek_start_avoids_previous_keyframe_snap() -> None:
+    # Regression: seeking exactly at 146.563 made ffmpeg start at 144.186.
+    assert seek_start(146.563, 150.0, next_keyframe=151.318) == pytest.approx(149.95)
+
+
+def test_seek_start_clamps_to_the_export_end() -> None:
+    assert seek_start(2.0, 2.02, next_keyframe=3.0) == pytest.approx(2.0)
+    assert seek_start(2.0, 2.06, next_keyframe=3.0) == pytest.approx(2.01)
+
+
+def test_seek_start_uses_gop_end_for_the_last_gop() -> None:
+    assert seek_start(5.0, 6.0, gop_end=6.0) == pytest.approx(5.9)
+
+
+def test_seek_start_without_gop_bounds() -> None:
+    assert seek_start(2.0, 6.0) == pytest.approx(2.0)
+    assert seek_start(2.0, 6.0, gop_end=1.0) == pytest.approx(2.0)
+
+
+def test_cut_args_seek_inside_gop(tmp_path: Path) -> None:
+    args = cut_args(
+        Path("input.mkv"),
+        146.563,
+        150.0,
+        tmp_path / "out.mkv",
+        next_keyframe=151.318,
+    )
+    assert args[args.index("-ss") + 1] == "149.950000"
+    assert args[args.index("-to") + 1] == "150.000000"
+
+
+def test_snapped_export_message() -> None:
+    assert snapped_export_message([Segment(0.0, 1.0)]) is None
+    message = snapped_export_message(
+        [Segment(146.563, 150.0, requested_start=148.27)]
+    )
+    assert message is not None
+    assert "Segment 1" in message
+    assert "00:02:26.563" in message
+    assert "00:02:28.270" in message
+    assert "+1.707s included" in message
 
 
 def test_concat_args(tmp_path: Path) -> None:
@@ -99,6 +177,35 @@ def test_export_separate(qtbot, sample_media, tmp_path: Path) -> None:
         media = probe_media(path)
         assert media.duration == pytest.approx(1.0, abs=0.25)
         assert media.video_codec == "h264"
+
+
+@pytest.mark.integration
+def test_export_starts_at_snapped_keyframe(
+    qtbot, sample_media, tmp_path: Path
+) -> None:
+    output = tmp_path / "snapped"
+    exporter = Exporter(
+        sample_media,
+        [Segment(1.0, 2.0, requested_start=1.6)],
+        output,
+        mode="separate",
+        keyframes_complete=True,
+    )
+    with qtbot.waitSignal(exporter.finished, timeout=60000) as blocker:
+        exporter.start()
+    path = Path(blocker.args[0][0])
+
+    source = _video_packets(sample_media.path)
+    keyframe_size = next(
+        int(packet["size"])
+        for packet in source
+        if "K" in str(packet["flags"])
+        and float(packet["pts_time"]) == pytest.approx(1.0, abs=0.02)
+    )
+    exported = _video_packets(path)
+    assert int(exported[0]["size"]) == keyframe_size
+    span = float(exported[-1]["pts_time"]) - float(exported[0]["pts_time"])
+    assert span == pytest.approx(1.0, abs=0.15)
 
 
 @pytest.mark.integration

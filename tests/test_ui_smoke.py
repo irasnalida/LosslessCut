@@ -314,3 +314,45 @@ def test_image_drop_creates_keyframe_segment(
     assert len(window.segments) == 2
 
     window.close()
+
+
+def test_start_export_cancels_on_snapped_segment(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    window.segments = [Segment(1.0, 2.0, requested_start=1.6)]
+    window.output_dir = tmp_path
+    monkeypatch.setattr(window, "_confirm_snapped_export", lambda segments: False)
+
+    class FailExporter:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("exporter should not start")
+
+    monkeypatch.setattr(main_window_module, "Exporter", FailExporter)
+    window._start_export()
+
+    assert window._exporting is False
+    assert "cancelled" in window.statusBar().currentMessage().lower()
+    window.close()
+
+
+def test_confirm_snapped_export_skips_dialog_without_snap(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    monkeypatch.setattr(main_window_module, "QMessageBox", None)
+
+    assert window._confirm_snapped_export([Segment(0.0, 1.0)]) is True
+    window.close()

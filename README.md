@@ -154,8 +154,8 @@ The two hand buttons flanking the playback controls build segments without split
 - **Mark start** (`[`, left hand) starts a new segment at the keyframe at or before the
   playhead, and initially ends at the next keyframe. A lossless cut cannot begin in the
   middle of a GOP, so marking between keyframes moves the start back. The status bar and
-  the segment card report how many seconds of extra footage are included, and the
-  timeline shades that footage in amber.
+  the segment card report how many seconds of extra footage are included, the timeline
+  shades that footage in amber, and the export asks for confirmation first.
 - **Mark end** (`]`, right hand) extends the selected segment to the playhead exactly.
   It never moves an end backward, so place the playhead past the current end.
 
@@ -213,9 +213,15 @@ A segment start must be a keyframe timestamp, but its end can fall on any packet
 Export runs ffmpeg with stream copy:
 
 ```text
-ffmpeg -ss START -i INPUT -t DURATION -map 0 -c copy \
+ffmpeg -ss SEEK -to END -i INPUT -map 0 -c copy \
        -avoid_negative_ts make_zero OUTPUT
 ```
+
+`SEEK` is a point inside the GOP that starts at the segment's keyframe. Some containers
+(notably Matroska) make ffmpeg seek one keyframe too early when the target sits on a
+keyframe, so the exporter seeks later inside the same GOP; the copied output still begins
+at the keyframe. `-to END` is an absolute source time, which keeps the cut ending at the
+requested time instead of a duration measured from the seek target.
 
 Because the video and audio packets are copied rather than decoded and re-encoded, the
 output quality is identical to the source and exports are very fast. A few details follow
@@ -223,6 +229,7 @@ from that:
 
 - The cut starts at the keyframe at or before your mark. When the mark is between
   keyframes, the UI moves the start back and reports how much extra footage is included.
+  The export shows a confirmation listing every snapped segment before it starts.
 - The cut ends at the requested time (to the nearest packet), so the tail is not padded
   to the next keyframe.
 - Audio may extend slightly past the requested end because compressed audio frames do not
