@@ -9,7 +9,7 @@ from PySide6.QtGui import QGuiApplication, QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
 ROOT = Path(__file__).resolve().parents[1]
-ICON_DIR = ROOT / "src" / "losslesscut" / "assets" / "icons"
+ICON_DIR = ROOT / "src" / "losslesscut" / "assets"
 OUTPUT = ROOT / "src" / "losslesscut" / "assets" / "app.ico"
 
 SIZE = 256
@@ -19,7 +19,7 @@ ACCENT = "#39b9c9"
 
 def main() -> int:
     _app = QGuiApplication([])
-    source_path = ICON_DIR / "scissors-fill.svg"
+    source_path = ICON_DIR / "icon.svg"
     source = source_path.read_text(encoding="utf-8")
     renderer = QSvgRenderer(QByteArray(source.replace("currentColor", ACCENT).encode()))
     if not renderer.isValid():
