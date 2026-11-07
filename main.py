@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+source_dir = Path(__file__).resolve().parent / "src"
+if source_dir.is_dir():
+    sys.path.insert(0, str(source_dir))
 
 from losslesscut.app import main
 

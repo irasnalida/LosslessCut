@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,8 +33,34 @@ class FFmpegError(RuntimeError):
         return "\n\n".join(parts)
 
 
+def binary_search_dirs() -> list[Path]:
+    """Return the directories searched for bundled ffmpeg binaries.
+
+    Frozen builds check an explicit override first, then an ``ffmpeg`` folder
+    beside the executable, the executable directory itself, and the
+    PyInstaller bundle directory.
+    """
+    directories: list[Path] = []
+    override = os.environ.get("LOSSLESSCUT_FFMPEG_DIR")
+    if override:
+        directories.append(Path(override))
+    if getattr(sys, "frozen", False):
+        executable_dir = Path(sys.executable).resolve().parent
+        directories.extend((executable_dir / "ffmpeg", executable_dir))
+        bundle_dir = getattr(sys, "_MEIPASS", None)
+        if bundle_dir:
+            bundle = Path(bundle_dir)
+            directories.extend((bundle / "ffmpeg", bundle))
+    return directories
+
+
 def find_binary(name: str) -> str | None:
-    """Return an absolute path for *name* from PATH, if present."""
+    """Return an absolute path for *name* from the bundle or PATH."""
+    filename = f"{name}.exe" if os.name == "nt" else name
+    for directory in binary_search_dirs():
+        candidate = directory / filename
+        if candidate.is_file():
+            return str(candidate)
     return shutil.which(name)
 
 
@@ -41,8 +68,8 @@ def ffmpeg_path() -> str:
     path = find_binary("ffmpeg")
     if not path:
         raise FFmpegError(
-            "ffmpeg was not found on PATH. Install it and make sure the ffmpeg "
-            "executable is available from the command line."
+            "ffmpeg was not found. Put it in the ffmpeg folder next to the "
+            "application, set LOSSLESSCUT_FFMPEG_DIR, or install it on PATH."
         )
     return path
 
@@ -51,8 +78,8 @@ def ffprobe_path() -> str:
     path = find_binary("ffprobe")
     if not path:
         raise FFmpegError(
-            "ffprobe was not found on PATH. It is normally installed together "
-            "with ffmpeg."
+            "ffprobe was not found. Put it in the ffmpeg folder next to the "
+            "application, set LOSSLESSCUT_FFMPEG_DIR, or install it on PATH."
         )
     return path
 
@@ -145,9 +172,10 @@ class BinaryStatus:
             name for name, value in (("ffmpeg", self.ffmpeg), ("ffprobe", self.ffprobe)) if not value
         ]
         return (
-            "Missing from PATH: "
+            "Missing: "
             + ", ".join(missing)
-            + ". Install ffmpeg and restart the application."
+            + ". Put them in the ffmpeg folder next to the application, set "
+            "LOSSLESSCUT_FFMPEG_DIR, or install them on PATH."
         )
 
 
