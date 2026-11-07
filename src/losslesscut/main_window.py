@@ -44,7 +44,9 @@ from .models import (
     format_timecode,
     nearest_keyframe,
     next_keyframe,
+    parse_image_timestamp,
     previous_keyframe,
+    segment_for_keyframe_gap,
     split_segment,
 )
 from .preview import VideoPreview
@@ -56,6 +58,7 @@ _VIDEO_FILTER = (
     "Video files (*.mp4 *.mkv *.mov *.m4v *.avi *.webm *.ts *.m2ts *.mts *.flv *.wmv "
     "*.mpg *.mpeg *.3gp *.ogv *.vob);;All files (*.*)"
 )
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 class MainWindow(QMainWindow):
@@ -77,6 +80,7 @@ class MainWindow(QMainWindow):
         self._probe_worker: Worker | None = None
         self._keyframe_worker: Worker | None = None
         self._keyframes_loading = False
+        self._pending_images: list[Path] = []
         self._export_worker: Exporter | None = None
         self._export_dialog: QProgressDialog | None = None
         self._exporting = False
@@ -436,6 +440,7 @@ class MainWindow(QMainWindow):
         self.media = None
         self.keyframes = []
         self._keyframes_loading = False
+        self._pending_images = []
         self.segments = []
         self.selected_segment = -1
         self.current_time = 0.0
@@ -510,10 +515,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Loaded {len(self.keyframes):,} keyframe boundaries"
         )
+        self._flush_pending_images()
 
     def _on_probe_failed(self, message: str, detail: str, token: int) -> None:
         if token != self._load_id:
             return
+        self._pending_images.clear()
         self.setWindowTitle("LosslessCut")
         self.media_info_label.setText("No media")
         self.statusBar().showMessage("Could not open the video")
@@ -529,10 +536,13 @@ class MainWindow(QMainWindow):
         if token != self._load_id:
             return
         self._keyframes_loading = False
+        pending = len(self._pending_images)
+        self._pending_images.clear()
         self.keyframe_count_label.setText("Keyframes: unavailable")
         self.keyframe_count_label.setToolTip(detail or message)
         self.statusBar().showMessage(
             "Keyframe scan failed; splitting is unavailable for this file"
+            + (f" ({pending} screenshot segment(s) were not added)" if pending else "")
         )
 
     # ------------------------------------------------------------- navigation
@@ -697,6 +707,115 @@ class MainWindow(QMainWindow):
         self.selected_segment = 0
         self._refresh_segments()
         self.statusBar().showMessage("Reset to one full-length segment")
+
+    # ------------------------------------------------------ screenshot segments
+    def _queue_or_add_images(self, paths: list[Path]) -> None:
+        if not paths:
+            return
+        if self.media is None:
+            self.statusBar().showMessage(
+                "Open a video before dropping timestamped screenshots"
+            )
+            return
+        if self._keyframes_loading:
+            self._pending_images.extend(paths)
+            self.statusBar().showMessage(
+                f"Waiting for the keyframe scan to place {len(paths)} screenshot segment(s)…"
+            )
+            return
+        self._add_segments_from_images(paths)
+
+    def _flush_pending_images(self) -> None:
+        if not self._pending_images:
+            return
+        pending = self._pending_images
+        self._pending_images = []
+        if self.media is not None:
+            self._add_segments_from_images(pending)
+
+    def _is_default_full_segment(self) -> bool:
+        if self.media is None or len(self.segments) != 1:
+            return False
+        segment = self.segments[0]
+        return (
+            abs(segment.start) < 1e-3
+            and abs(segment.end - self.media.duration) < 1e-3
+        )
+
+    def _add_segments_from_images(self, paths: list[Path]) -> None:
+        if self.media is None:
+            return
+        added = 0
+        duplicates = 0
+        selected = -1
+        selected_time: float | None = None
+        invalid: list[str] = []
+        unplaced: list[str] = []
+
+        for path in paths:
+            timestamp = parse_image_timestamp(path.name)
+            if timestamp is None:
+                invalid.append(path.name)
+                continue
+            if timestamp > self.media.duration + 0.001:
+                unplaced.append(path.name)
+                continue
+            segment = segment_for_keyframe_gap(
+                self.keyframes, timestamp, self.media.duration
+            )
+            if segment is None:
+                unplaced.append(path.name)
+                continue
+
+            existing = next(
+                (
+                    index
+                    for index, current in enumerate(self.segments)
+                    if abs(current.start - segment.start) < 1e-3
+                    and abs(current.end - segment.end) < 1e-3
+                ),
+                None,
+            )
+            if existing is not None:
+                selected = existing
+                duplicates += 1
+            else:
+                if self._is_default_full_segment():
+                    self.segments = []
+                self.segments.append(segment)
+                selected = len(self.segments) - 1
+                added += 1
+            selected_time = timestamp
+
+        if selected >= 0:
+            self.selected_segment = selected
+            self._refresh_segments()
+            self._seek_to(selected_time if selected_time is not None else 0.0)
+            self.timeline_panel.ensure_time_visible(self.current_time)
+
+        parts: list[str] = []
+        if added == 1 and selected >= 0:
+            segment = self.segments[selected]
+            parts.append(
+                f"Created segment {format_timecode(segment.start)} – "
+                f"{format_timecode(segment.end)}"
+            )
+        elif added:
+            parts.append(f"Created {added} screenshot segments")
+        if duplicates:
+            parts.append(
+                "Selected the existing segment"
+                if added == 0 and duplicates == 1
+                else f"{duplicates} segment(s) already existed"
+            )
+        if invalid:
+            parts.append(
+                f"ignored {len(invalid)} file(s) without a T hh'mm'ss'ms timestamp"
+            )
+        if unplaced:
+            parts.append(f"ignored {len(unplaced)} file(s) outside the video")
+        if parts:
+            self.statusBar().showMessage("  ·  ".join(parts), 8000)
 
     # ------------------------------------------------------------------ export
     def _choose_output_dir(self) -> None:
@@ -1004,7 +1123,20 @@ class MainWindow(QMainWindow):
         if not paths:
             return
         event.acceptProposedAction()
-        self.open_path(paths[0])
+
+        images = [path for path in paths if path.suffix.lower() in _IMAGE_SUFFIXES]
+        videos = [path for path in paths if path.suffix.lower() not in _IMAGE_SUFFIXES]
+        if videos:
+            self.open_path(videos[0])
+            if images:
+                self._pending_images.extend(images)
+                self.statusBar().showMessage(
+                    f"Will place {len(images)} screenshot segment(s) after the keyframe scan…"
+                )
+        elif images:
+            self._queue_or_add_images(images)
+        else:
+            self.open_path(paths[0])
 
     # ---------------------------------------------------------------- settings
     def _restore_settings(self) -> None:
