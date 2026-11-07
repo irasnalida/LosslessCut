@@ -9,6 +9,7 @@ from losslesscut.exporter import (
     concat_args,
     cut_args,
     merged_suffix,
+    next_output_index,
     unique_path,
 )
 from losslesscut.ffprobe import probe_media
@@ -53,6 +54,32 @@ def test_unique_path(tmp_path: Path) -> None:
     assert second.name == "clip_1.mp4"
 
 
+def test_next_output_index(tmp_path: Path) -> None:
+    assert next_output_index(tmp_path, "clip", ".mp4") == 1
+
+    (tmp_path / "clip_001.mp4").write_bytes(b"")
+    (tmp_path / "clip_002.mp4").write_bytes(b"")
+    (tmp_path / "other_009.mp4").write_bytes(b"")
+    (tmp_path / "clip_notes.mp4").write_bytes(b"")
+    assert next_output_index(tmp_path, "clip", ".mp4") == 3
+
+    (tmp_path / "clip_0100.mp4").write_bytes(b"")
+    assert next_output_index(tmp_path, "clip", ".mp4") == 101
+
+
+def test_planned_outputs_continue_numbering(sample_media, tmp_path: Path) -> None:
+    (tmp_path / "sample_001.mp4").write_bytes(b"")
+    exporter = Exporter(
+        sample_media,
+        [Segment(1.0, 2.0), Segment(3.0, 4.0)],
+        tmp_path,
+        mode="separate",
+    )
+
+    outputs = exporter.planned_outputs()
+    assert [path.name for path in outputs] == ["sample_002.mp4", "sample_003.mp4"]
+
+
 @pytest.mark.integration
 def test_export_separate(qtbot, sample_media, tmp_path: Path) -> None:
     output = tmp_path / "separate"
@@ -66,6 +93,7 @@ def test_export_separate(qtbot, sample_media, tmp_path: Path) -> None:
         exporter.start()
     paths = [Path(value) for value in blocker.args[0]]
     assert len(paths) == 2
+    assert [path.name for path in paths] == ["sample_001.mp4", "sample_002.mp4"]
     for path in paths:
         assert path.exists() and path.stat().st_size > 0
         media = probe_media(path)

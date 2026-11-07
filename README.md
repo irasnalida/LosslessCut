@@ -138,7 +138,11 @@ uv run python scripts/make_app_icon.py
 6. Choose an output folder with the **Output** button.
 7. Pick **Separate files** or **Merge into one file**, then click **Export**.
 
-Existing files are never overwritten; a numeric suffix is added instead.
+Separate exports are numbered from the source name: `video_001.mp4`, `video_002.mp4`.
+Numbering continues on later exports into the same folder (`video_003`, `video_004`, ...),
+so cuts from the same video never collide or overwrite each other. Merged exports use
+`video_merged.mp4` (or the matching fallback container); existing files get a numeric
+suffix.
 
 Segments are always kept in start-time order. That order drives the segment numbering, the
 separate file names, and the merged concatenation.
@@ -150,7 +154,8 @@ The two hand buttons flanking the playback controls build segments without split
 - **Mark start** (`[`, left hand) starts a new segment at the keyframe at or before the
   playhead, and initially ends at the next keyframe. A lossless cut cannot begin in the
   middle of a GOP, so marking between keyframes moves the start back. The status bar and
-  the segment card report how many seconds of extra footage are included.
+  the segment card report how many seconds of extra footage are included, and the
+  timeline shades that footage in amber.
 - **Mark end** (`]`, right hand) extends the selected segment to the playhead exactly.
   It never moves an end backward, so place the playhead past the current end.
 

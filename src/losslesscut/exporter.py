@@ -111,6 +111,20 @@ def unique_path(directory: Path, stem: str, suffix: str) -> Path:
     return candidate
 
 
+def next_output_index(directory: Path, stem: str, suffix: str) -> int:
+    """Return the next free ``stem_NNN`` number in *directory*."""
+    pattern = re.compile(
+        rf"^{re.escape(stem)}_(\d{{3,}}){re.escape(suffix)}$", re.IGNORECASE
+    )
+    highest = 0
+    if directory.is_dir():
+        for path in directory.iterdir():
+            match = pattern.match(path.name)
+            if match is not None:
+                highest = max(highest, int(match.group(1)))
+    return highest + 1
+
+
 def _concat_escape(path: Path) -> str:
     return str(path).replace("'", "'\\''")
 
@@ -168,9 +182,11 @@ class Exporter(QObject):
         if self.mode == "merge":
             result.append(unique_path(self.output_dir, f"{self.media.path.stem}_merged", merged_suffix(suffix)))
             return result
-        for index, _segment in enumerate(self.segments, start=1):
+        base = next_output_index(self.output_dir, self.media.path.stem, suffix)
+        for offset, _segment in enumerate(self.segments):
             result.append(
-                unique_path(self.output_dir, f"{self.media.path.stem}_{index:03d}", suffix)
+                self.output_dir
+                / f"{self.media.path.stem}_{base + offset:03d}{suffix}"
             )
         return result
 
