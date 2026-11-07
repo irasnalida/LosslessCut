@@ -94,6 +94,9 @@ uv run losslesscut "C:\Videos\movie.mp4"
 
 Existing files are never overwritten; a numeric suffix is added instead.
 
+Segments are always kept in start-time order. That order drives the segment numbering, the
+separate file names, and the merged concatenation.
+
 ### Marking segments at the playhead
 
 The two hand buttons flanking the playback controls build segments without splitting:

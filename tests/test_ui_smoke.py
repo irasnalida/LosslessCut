@@ -68,6 +68,9 @@ def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> 
     window._split_at_playhead()
     assert len(window.segments) == 2
     assert window.segments[0].end == 3.0
+    assert [segment.start for segment in window.segments] == sorted(
+        segment.start for segment in window.segments
+    )
     window.close()
 
 
@@ -104,23 +107,23 @@ def test_mark_segment_start_and_end(
     window._mark_segment_end()
     assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0)]
 
-    # A later start is appended instead of replacing other segments.
+    # An earlier start is appended and sorted before existing segments.
     window.current_time = 0.2
     window._mark_segment_start()
-    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0), (0.0, 1.0)]
-    assert window.selected_segment == 1
+    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 5.0)]
+    assert window.selected_segment == 0
 
     # Repeating the same start selects the existing segment.
     window.current_time = 0.2
     window._mark_segment_start()
     assert len(window.segments) == 2
-    assert window.selected_segment == 1
+    assert window.selected_segment == 0
 
-    # With no selection, mark-end extends the last segment.
+    # With no selection, mark-end extends the chronologically last segment.
     window.selected_segment = -1
-    window.current_time = 4.2
+    window.current_time = 5.5
     window._mark_segment_end()
-    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0), (0.0, 5.0)]
+    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 6.0)]
     assert window.selected_segment == 1
 
     # With no segments, mark-end is a no-op.
@@ -130,6 +133,56 @@ def test_mark_segment_start_and_end(
     window._mark_segment_end()
     assert window.segments == []
 
+    window.close()
+
+
+def test_mark_start_keeps_segments_sorted(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    window.keyframes = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    window.segments = [Segment(0.0, sample_media.duration)]
+    window.selected_segment = 0
+    monkeypatch.setattr(window.preview, "seek", lambda *args, **kwargs: None)
+
+    window.current_time = 5.2
+    window._mark_segment_start()
+    window.current_time = 2.2
+    window._mark_segment_start()
+
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 3.0), (5.0, 6.0)]
+    assert window.selected_segment == 0
+    window.close()
+
+
+def test_image_drop_keeps_segments_sorted(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    window.keyframes = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    window.segments = [Segment(4.0, 5.0)]
+    window.selected_segment = 0
+    monkeypatch.setattr(window.preview, "seek", lambda *args, **kwargs: None)
+
+    image = tmp_path / "T00'00'02'500.png"
+    image.write_bytes(b"")
+    window._add_segments_from_images([image])
+
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 3.0), (4.0, 5.0)]
+    assert window.selected_segment == 0
+    assert "00:00:02.000" in window.statusBar().currentMessage()
     window.close()
 
 
