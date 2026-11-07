@@ -15,7 +15,7 @@ ffmpeg.
   - keyframe boundaries
   - colored segment blocks
   - draggable playhead
-- Split segments at the nearest keyframe, delete unwanted parts, and export the rest.
+- Mark segment starts and ends at the playhead, split at the nearest keyframe, delete unwanted parts, and export the rest.
 - Create a segment by dropping a screenshot whose filename contains a `Thh'mm'ss'ms` timestamp.
 - Export each segment as a separate file, or concatenate the selected segments into one file.
 - Lossless output using `ffmpeg -c copy`; the video is never re-encoded.
@@ -94,6 +94,21 @@ uv run losslesscut "C:\Videos\movie.mp4"
 
 Existing files are never overwritten; a numeric suffix is added instead.
 
+### Marking segments at the playhead
+
+The two hand buttons flanking the playback controls build segments without splitting:
+
+- **Mark start** (`[`, left hand) starts a new segment at the keyframe at or before the
+  playhead. It initially ends at the next keyframe.
+- **Mark end** (`]`, right hand) extends the selected segment to the first keyframe at or
+  after the playhead. It never moves an end backward, so place the playhead past the
+  current end.
+
+Marking a start on the untouched full-length segment replaces it. Once other segments
+exist, new starts are appended and selected. If the same interval already exists, it is
+selected instead of duplicated. Overlapping segments are allowed, matching
+screenshot-created segments.
+
 ### Creating segments from screenshots
 
 Drop an image whose filename contains a media-player timestamp in the form
@@ -125,6 +140,8 @@ preview jumps to the timestamp.
 | `Shift+Left` / `Shift+Right` | Jump one second |
 | `Up` / `Down` | Previous / next keyframe |
 | `Home` / `End` | Go to start / end |
+| `[` | Mark a segment start at the playhead |
+| `]` | Extend the selected segment to the playhead |
 | `S` | Split the active segment at the nearest keyframe |
 | `Delete` / `Backspace` | Delete the selected segment |
 | `Ctrl+E` | Export segments using the selected mode |

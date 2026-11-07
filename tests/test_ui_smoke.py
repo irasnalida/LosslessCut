@@ -53,6 +53,12 @@ def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> 
     assert not window.split_action.icon().isNull()
     assert not window.export_action.icon().isNull()
     assert not window.open_action.icon().isNull()
+    assert not window.mark_start_button.icon().isNull()
+    assert not window.mark_end_button.icon().isNull()
+    assert not window.mark_start_action.icon().isNull()
+    assert not window.mark_end_action.icon().isNull()
+    assert not window.mark_start_button.isEnabled()
+    assert not window.mark_end_button.isEnabled()
 
     window.media = sample_media
     window.keyframes = list(sample_media.keyframes)
@@ -62,6 +68,68 @@ def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> 
     window._split_at_playhead()
     assert len(window.segments) == 2
     assert window.segments[0].end == 3.0
+    window.close()
+
+
+def test_mark_segment_start_and_end(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    window.keyframes = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    window.segments = [Segment(0.0, sample_media.duration)]
+    window.selected_segment = 0
+    monkeypatch.setattr(window.preview, "seek", lambda *args, **kwargs: None)
+
+    # Marking a start replaces the untouched full-length segment.
+    window.current_time = 2.4
+    window._mark_segment_start()
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 3.0)]
+    assert window.selected_segment == 0
+    assert window.current_time == pytest.approx(2.0)
+
+    # Marking the end extends the selected segment to the next keyframe.
+    window.current_time = 4.6
+    window._mark_segment_end()
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0)]
+    assert window.selected_segment == 0
+
+    # Extend-only: a playhead before the current end leaves it unchanged.
+    window.current_time = 3.0
+    window._mark_segment_end()
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0)]
+
+    # A later start is appended instead of replacing other segments.
+    window.current_time = 0.2
+    window._mark_segment_start()
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0), (0.0, 1.0)]
+    assert window.selected_segment == 1
+
+    # Repeating the same start selects the existing segment.
+    window.current_time = 0.2
+    window._mark_segment_start()
+    assert len(window.segments) == 2
+    assert window.selected_segment == 1
+
+    # With no selection, mark-end extends the last segment.
+    window.selected_segment = -1
+    window.current_time = 4.2
+    window._mark_segment_end()
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0), (0.0, 5.0)]
+    assert window.selected_segment == 1
+
+    # With no segments, mark-end is a no-op.
+    window.segments = []
+    window.selected_segment = -1
+    window.current_time = 2.0
+    window._mark_segment_end()
+    assert window.segments == []
+
     window.close()
 
 

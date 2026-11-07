@@ -7,6 +7,8 @@ from losslesscut.models import (
     dedupe_keyframes,
     format_size,
     format_timecode,
+    keyframe_at_or_after,
+    keyframe_at_or_before,
     nearest_keyframe,
     next_keyframe,
     parse_image_timestamp,
@@ -66,6 +68,20 @@ def test_split_segment_rejects_edges_and_no_inner_keyframe() -> None:
     assert split_segment(Segment(0.0, 6.0), 0.0, [0.0, 3.0, 6.0]) is None
     assert split_segment(Segment(0.0, 6.0), 6.0, [0.0, 3.0, 6.0]) is None
     assert split_segment(Segment(0.0, 2.0), 1.0, [0.0, 3.0, 6.0]) is None
+
+
+def test_keyframe_at_or_before_and_after() -> None:
+    keyframes = [0.0, 2.0, 4.0, 6.0]
+
+    assert keyframe_at_or_before(keyframes, 3.0) == 2.0
+    assert keyframe_at_or_before(keyframes, 2.0) == 2.0
+    assert keyframe_at_or_before(keyframes, -1.0) is None
+    assert keyframe_at_or_before([], 1.0) is None
+
+    assert keyframe_at_or_after(keyframes, 3.0) == 4.0
+    assert keyframe_at_or_after(keyframes, 4.0) == 4.0
+    assert keyframe_at_or_after(keyframes, 7.0) is None
+    assert keyframe_at_or_after([], 1.0) is None
 
 
 def test_segment_stats() -> None:
