@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_left, bisect_right
 
-from PySide6.QtCore import QPoint, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .icons import MUTED_COLOR, icon
 from .models import Segment, format_short_time
 
 RULER_HEIGHT = 26
@@ -492,17 +493,27 @@ class TimelinePanel(QWidget):
         self.scroll = QScrollBar(Qt.Orientation.Horizontal, self)
         self.scroll.setRange(0, 0)
         self.scroll.setSingleStep(100)
-        self.zoom_out_button = QPushButton("−", self)
-        self.zoom_in_button = QPushButton("+", self)
-        self.fit_button = QPushButton("Fit", self)
+        self.zoom_out_button = QPushButton(self)
+        self.zoom_in_button = QPushButton(self)
+        self.fit_button = QPushButton(self)
+        self.zoom_out_button.setIcon(icon("magnifying-glass-minus", MUTED_COLOR, 15))
+        self.zoom_in_button.setIcon(icon("magnifying-glass-plus", MUTED_COLOR, 15))
+        self.fit_button.setIcon(icon("arrows-out", MUTED_COLOR, 15))
         self.zoom_label = QLabel("1.0x", self)
         self.zoom_label.setMinimumWidth(52)
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.zoom_label.setObjectName("muted")
 
-        for button in (self.zoom_out_button, self.zoom_in_button, self.fit_button):
+        for button, name in (
+            (self.zoom_out_button, "Zoom out"),
+            (self.zoom_in_button, "Zoom in"),
+            (self.fit_button, "Fit the whole video"),
+        ):
             button.setObjectName("flatButton")
-            button.setMinimumWidth(28)
+            button.setFixedSize(28, 22)
+            button.setIconSize(QSize(15, 15))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setAccessibleName(name)
         self.zoom_out_button.setToolTip("Zoom out (−)")
         self.zoom_in_button.setToolTip("Zoom in (+)")
         self.fit_button.setToolTip("Fit the whole video (F)")

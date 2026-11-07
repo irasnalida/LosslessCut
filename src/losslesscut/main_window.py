@@ -12,7 +12,7 @@ from PySide6.QtGui import (
     QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
-    QFontDatabase,
+    QFont,
     QKeySequence,
 )
 from PySide6.QtWidgets import (
@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QPushButton,
     QSplitter,
-    QStyle,
     QToolBar,
     QToolButton,
     QVBoxLayout,
@@ -37,6 +36,7 @@ from PySide6.QtWidgets import (
 from .exporter import Exporter
 from .ffmpeg_utils import check_binaries
 from .ffprobe import probe_keyframes, probe_media
+from .icons import DEFAULT_COLOR, MUTED_COLOR, icon
 from .models import (
     MediaInfo,
     Segment,
@@ -127,31 +127,34 @@ class MainWindow(QMainWindow):
         layout.setSpacing(4)
 
         self.start_button = self._media_button(
-            QStyle.StandardPixmap.SP_MediaSkipBackward, "Go to start (Home)", self._go_start
+            "skip-back", "Go to start (Home)", self._go_start
         )
         self.prev_keyframe_button = self._media_button(
-            QStyle.StandardPixmap.SP_MediaSeekBackward,
+            "caret-double-left",
             "Previous keyframe (Up)",
             lambda: self._jump_keyframe(-1),
         )
-        self.frame_back_button = self._text_button("−1f", "Step back one frame (Left)", lambda: self._step_frames(-1))
-        self.play_button = self._media_button(
-            QStyle.StandardPixmap.SP_MediaPlay, "Play / pause (Space)", self._toggle_play
+        self.frame_back_button = self._media_button(
+            "caret-left", "Step back one frame (Left)", lambda: self._step_frames(-1)
         )
-        self.frame_forward_button = self._text_button(
-            "+1f", "Step forward one frame (Right)", lambda: self._step_frames(1)
+        self.play_button = self._media_button(
+            "play", "Play / pause (Space)", self._toggle_play
+        )
+        self.frame_forward_button = self._media_button(
+            "caret-right", "Step forward one frame (Right)", lambda: self._step_frames(1)
         )
         self.next_keyframe_button = self._media_button(
-            QStyle.StandardPixmap.SP_MediaSeekForward,
+            "caret-double-right",
             "Next keyframe (Down)",
             lambda: self._jump_keyframe(1),
         )
         self.end_button = self._media_button(
-            QStyle.StandardPixmap.SP_MediaSkipForward, "Go to end (End)", self._go_end
+            "skip-forward", "Go to end (End)", self._go_end
         )
 
-        fixed_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        fixed_font.setPointSize(max(10, fixed_font.pointSize() + 1))
+        fixed_font = QFont("Inter")
+        fixed_font.setPointSize(11)
+        fixed_font.setFeature(QFont.Tag("tnum"), 1)
         self.time_label = QLabel("00:00:00.000", bar)
         self.time_label.setFont(fixed_font)
         self.time_label.setMinimumWidth(112)
@@ -188,52 +191,46 @@ class MainWindow(QMainWindow):
         return bar
 
     def _media_button(
-        self, pixmap: QStyle.StandardPixmap, tooltip: str, callback
+        self, name: str, tooltip: str, callback, color: str = DEFAULT_COLOR
     ) -> QToolButton:
         button = QToolButton(self)
-        button.setIcon(self.style().standardIcon(pixmap))
+        button.setIcon(icon(name, color, 18))
         button.setIconSize(QSize(18, 18))
         button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
         button.setObjectName("flatButton")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(callback)
-        return button
-
-    def _text_button(self, text: str, tooltip: str, callback) -> QPushButton:
-        button = QPushButton(text, self)
-        button.setObjectName("flatButton")
-        button.setToolTip(tooltip)
-        button.setFixedWidth(38)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(callback)
         return button
 
     def _build_actions(self) -> None:
         self.open_action = self._action(
-            "&Open video…", "Ctrl+O", self._choose_video, QStyle.StandardPixmap.SP_DialogOpenButton
+            "&Open video…", "Ctrl+O", self._choose_video, "folder-open"
         )
         self.output_action = self._action(
-            "Choose &output folder…", None, self._choose_output_dir
+            "Choose &output folder…", None, self._choose_output_dir, "folder-simple"
         )
         self.exit_action = self._action("E&xit", "Ctrl+Q", self.close)
 
         self.split_action = self._action(
-            "&Split at playhead", "S", self._split_at_playhead, QStyle.StandardPixmap.SP_ArrowRight
+            "&Split at playhead", "S", self._split_at_playhead, "scissors"
         )
         self.split_action.setToolTip("Split the active segment at the nearest keyframe")
         self.delete_action = self._action(
-            "&Delete segment", "Del", self._delete_selected, QStyle.StandardPixmap.SP_TrashIcon
+            "&Delete segment", "Del", self._delete_selected, "trash"
         )
         self.delete_action.setShortcuts([QKeySequence("Del"), QKeySequence("Backspace")])
         self.reset_action = self._action(
-            "Reset to &full video", None, self._reset_segments
+            "Reset to &full video", None, self._reset_segments, "arrow-counter-clockwise"
         )
-        self.export_action = self._action("&Export segments…", "Ctrl+E", lambda: self._start_export())
+        self.export_action = self._action(
+            "&Export segments…", "Ctrl+E", lambda: self._start_export(), "export"
+        )
         self.export_merged_action = self._action(
-            "Export &merged…", "Ctrl+Shift+E", lambda: self._start_export("merge")
+            "Export &merged…", "Ctrl+Shift+E", lambda: self._start_export("merge"), "git-merge"
         )
 
-        self.play_action = self._action("Play / pause", "Space", self._toggle_play)
+        self.play_action = self._action("Play / pause", "Space", self._toggle_play, "play")
         self.step_back_action = self._action(
             "Step back one frame", "Left", lambda: self._step_frames(-1)
         )
@@ -255,12 +252,19 @@ class MainWindow(QMainWindow):
         self.start_action = self._action("Go to start", "Home", self._go_start)
         self.end_action = self._action("Go to end", "End", self._go_end)
 
-        self.zoom_in_action = self._action("Zoom &in", "+", lambda: self.timeline_panel.zoom_by(1.5))
+        self.zoom_in_action = self._action(
+            "Zoom &in", "+", lambda: self.timeline_panel.zoom_by(1.5), "magnifying-glass-plus"
+        )
         self.zoom_in_action.setShortcuts([QKeySequence("+"), QKeySequence("=")])
         self.zoom_out_action = self._action(
-            "Zoom &out", "-", lambda: self.timeline_panel.zoom_by(1 / 1.5)
+            "Zoom &out",
+            "-",
+            lambda: self.timeline_panel.zoom_by(1 / 1.5),
+            "magnifying-glass-minus",
         )
-        self.fit_action = self._action("&Fit timeline", "F", self.timeline_panel.fit)
+        self.fit_action = self._action(
+            "&Fit timeline", "F", self.timeline_panel.fit, "arrows-out"
+        )
         self.fullscreen_action = self._action("Toggle &full screen", "F11", self._toggle_fullscreen)
 
         self.copy_time_action = self._action("&Copy current timecode", "Ctrl+C", self._copy_timecode)
@@ -294,13 +298,13 @@ class MainWindow(QMainWindow):
         text: str,
         shortcut: str | None,
         callback,
-        icon: QStyle.StandardPixmap | None = None,
+        icon_name: str | None = None,
     ) -> QAction:
         action = QAction(text, self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
-        if icon is not None:
-            action.setIcon(self.style().standardIcon(icon))
+        if icon_name is not None:
+            action.setIcon(icon(icon_name, DEFAULT_COLOR, 16))
         action.triggered.connect(callback)
         return action
 
@@ -352,6 +356,8 @@ class MainWindow(QMainWindow):
         output_label.setObjectName("muted")
         toolbar.addWidget(output_label)
         self.output_button = QPushButton("Choose…", toolbar)
+        self.output_button.setIcon(icon("folder-simple", MUTED_COLOR, 16))
+        self.output_button.setIconSize(QSize(16, 16))
         self.output_button.setObjectName("flatButton")
         self.output_button.setMaximumWidth(300)
         self.output_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -612,12 +618,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Preview: {message.splitlines()[0]}")
 
     def _set_play_icon(self, playing: bool) -> None:
-        pixmap = (
-            QStyle.StandardPixmap.SP_MediaPause
-            if playing
-            else QStyle.StandardPixmap.SP_MediaPlay
-        )
-        self.play_button.setIcon(self.style().standardIcon(pixmap))
+        self.play_button.setIcon(icon("pause" if playing else "play", DEFAULT_COLOR, 18))
         self._update_actions()
 
     # ---------------------------------------------------------------- segments

@@ -1,13 +1,49 @@
-"""Dark Fusion palette and stylesheet for the application."""
+"""Dark Fusion palette, bundled Inter typography and stylesheet."""
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QPalette
+from pathlib import Path
+
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
+
+FONT_DIR = Path(__file__).with_name("assets") / "fonts"
+FONT_FILES = (
+    "Inter-Regular.ttf",
+    "Inter-Medium.ttf",
+    "Inter-SemiBold.ttf",
+    "Inter-Bold.ttf",
+)
+_FONT_FAMILY: str | None = None
+_FONTS_LOADED = False
+
+
+def load_fonts() -> str | None:
+    """Register the bundled Inter faces and return the family name."""
+    global _FONT_FAMILY, _FONTS_LOADED
+    if _FONTS_LOADED:
+        return _FONT_FAMILY
+    _FONTS_LOADED = True
+    for name in FONT_FILES:
+        path = FONT_DIR / name
+        if path.exists():
+            QFontDatabase.addApplicationFont(str(path))
+    families = set(QFontDatabase.families())
+    for candidate in ("Inter", "Inter Variable"):
+        if candidate in families:
+            _FONT_FAMILY = candidate
+            break
+    return _FONT_FAMILY
 
 
 def apply_theme(app: QApplication) -> None:
     app.setStyle("Fusion")
+    family = load_fonts()
+    font = QFont(app.font())
+    if family:
+        font.setFamily(family)
+    font.setPointSize(10)
+    app.setFont(font)
     app.setStyleSheet(_STYLESHEET)
 
     palette = QPalette()
@@ -38,6 +74,7 @@ def apply_theme(app: QApplication) -> None:
 _STYLESHEET = """
 QWidget {
     color: #e7eaec;
+    font-family: "Inter", "Segoe UI", "Noto Sans", sans-serif;
     font-size: 12px;
 }
 QMainWindow, QDialog {
@@ -106,6 +143,7 @@ QPushButton {
     border-radius: 4px;
     padding: 5px 12px;
     min-height: 20px;
+    font-weight: 500;
 }
 QPushButton:hover {
     background: #373e44;

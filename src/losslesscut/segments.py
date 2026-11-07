@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .icons import icon
 from .models import MediaInfo, Segment, format_size, format_timecode
 from .timeline import SEGMENT_COLORS
 
@@ -56,13 +57,14 @@ class SegmentCard(QFrame):
         stats_label.setStyleSheet("color: #939da4; font-size: 11px;")
 
         remove_button = QToolButton(self)
-        remove_button.setText("✕")
+        remove_button.setIcon(icon("x", "#879198", 14))
+        remove_button.setIconSize(QSize(14, 14))
         remove_button.setToolTip("Remove this segment")
+        remove_button.setAccessibleName("Remove segment")
         remove_button.setCursor(Qt.CursorShape.ArrowCursor)
         remove_button.setStyleSheet(
-            "QToolButton { border: none; background: transparent; color: #879198; "
-            "font-size: 11px; padding: 2px; } "
-            "QToolButton:hover { color: #ff6b6b; }"
+            "QToolButton { border: none; background: transparent; padding: 2px; } "
+            "QToolButton:hover { background: #3a2427; border-radius: 4px; }"
         )
         remove_button.clicked.connect(self.remove_requested)
 
@@ -164,6 +166,8 @@ class SegmentPanel(QFrame):
 
         self.export_button = QPushButton("Export", self)
         self.export_button.setObjectName("exportButton")
+        self.export_button.setIcon(icon("export", "#ffffff", 16))
+        self.export_button.setIconSize(QSize(16, 16))
         self.export_button.setToolTip("Export the listed segments (Ctrl+E)")
 
         footer = QHBoxLayout()
