@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -240,6 +241,57 @@ def next_keyframe(times: list[float], value: float) -> float | None:
     if index >= len(times):
         return None
     return times[index]
+
+
+_IMAGE_TIMESTAMP_RE = re.compile(r"[Tt](\d{2,})'(\d{2})'(\d{2})'(\d{1,3})")
+
+
+def parse_image_timestamp(filename: str) -> float | None:
+    """Parse ``Thh'mm'ss'ms`` from a screenshot name, e.g. ``T00'38'07'285``.
+
+    The timestamp is returned in seconds relative to the start of the video.
+    Several media players put this marker in screenshot filenames. Returns
+    ``None`` when no valid marker is present.
+    """
+    text = str(filename).replace("\u2018", "'").replace("\u2019", "'")
+    match = _IMAGE_TIMESTAMP_RE.search(text)
+    if match is None:
+        return None
+    hours_text, minutes_text, seconds_text, fraction_text = match.groups()
+    minutes = int(minutes_text)
+    seconds = int(seconds_text)
+    if minutes >= 60 or seconds >= 60:
+        return None
+    fraction = int(fraction_text) / (10 ** len(fraction_text))
+    return int(hours_text) * 3600 + minutes * 60 + seconds + fraction
+
+
+def segment_for_keyframe_gap(
+    times: list[float],
+    at: float,
+    duration: float,
+) -> Segment | None:
+    """Return the keyframe interval containing *at*.
+
+    The segment starts at the last keyframe at or before *at* and ends at the
+    next keyframe. When *at* lands exactly on a keyframe, that keyframe starts
+    the segment. Times outside the video or an empty interval return ``None``.
+    """
+    if not math.isfinite(at) or duration <= 0 or at < 0 or at > duration + 0.001:
+        return None
+    at = min(max(0.0, at), duration)
+    index = bisect_right(times, at + 1e-6)
+    if index <= 0:
+        start = 0.0
+        end = times[0] if times else duration
+    else:
+        start = times[index - 1]
+        end = times[index] if index < len(times) else duration
+    start = min(max(0.0, start), duration)
+    end = min(max(0.0, end), duration)
+    if end - start <= 1e-6:
+        return None
+    return Segment(start, end, True)
 
 
 def nearest_keyframe(

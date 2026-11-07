@@ -9,8 +9,10 @@ from losslesscut.models import (
     format_timecode,
     nearest_keyframe,
     next_keyframe,
+    parse_image_timestamp,
     parse_timecode,
     previous_keyframe,
+    segment_for_keyframe_gap,
     split_segment,
 )
 
@@ -73,3 +75,52 @@ def test_segment_stats() -> None:
     assert segment.estimated_size(8_000_000) == 3_000_000
     assert segment.contains(2.0)
     assert not segment.contains(4.1)
+
+
+def test_parse_image_timestamp() -> None:
+    name = (
+        "Outer Banks (2020) - S01E09 - The Bell Tower "
+        "[WEBDL-1080p][EAC3 5.1][h265]-HONE-T00'38'07'285.png"
+    )
+    assert parse_image_timestamp(name) == pytest.approx(2287.285)
+    assert parse_image_timestamp("clip T01'02'03'4.mkv") == pytest.approx(3723.4)
+    assert parse_image_timestamp("clip t00'00'00'000.png") == 0.0
+    assert parse_image_timestamp("clip T00'00'00'28.png") == pytest.approx(0.28)
+    assert parse_image_timestamp("clip T00\u201900\u201900\u2019285.png") == pytest.approx(0.285)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "screenshot.png",
+        "T00'60'00'000.png",
+        "T00'00'60'000.png",
+        "T00-00-00-000.png",
+    ],
+)
+def test_parse_image_timestamp_rejects_invalid_names(name: str) -> None:
+    assert parse_image_timestamp(name) is None
+
+
+def test_segment_for_keyframe_gap() -> None:
+    keyframes = [0.0, 2.0, 4.0, 6.0]
+
+    between = segment_for_keyframe_gap(keyframes, 3.0, 8.0)
+    assert between is not None
+    assert (between.start, between.end) == (2.0, 4.0)
+
+    on_keyframe = segment_for_keyframe_gap(keyframes, 2.0, 8.0)
+    assert on_keyframe is not None
+    assert (on_keyframe.start, on_keyframe.end) == (2.0, 4.0)
+
+    at_start = segment_for_keyframe_gap(keyframes, 0.0, 8.0)
+    assert at_start is not None
+    assert (at_start.start, at_start.end) == (0.0, 2.0)
+
+    at_end = segment_for_keyframe_gap(keyframes, 7.5, 8.0)
+    assert at_end is not None
+    assert (at_end.start, at_end.end) == (6.0, 8.0)
+
+    assert segment_for_keyframe_gap(keyframes, 9.0, 8.0) is None
+    assert segment_for_keyframe_gap([0.0], 3.0, 8.0) == Segment(0.0, 8.0)
+    assert segment_for_keyframe_gap([], 3.0, 8.0) == Segment(0.0, 8.0)
