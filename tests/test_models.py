@@ -56,12 +56,14 @@ def test_keyframe_navigation() -> None:
 
 
 def test_split_segment_snaps_to_nearest_keyframe() -> None:
-    segment = Segment(0.0, 6.0)
+    segment = Segment(0.0, 6.0, requested_start=0.4)
     result = split_segment(segment, 2.9, [0.0, 1.0, 3.0, 6.0], fps=30.0)
     assert result is not None
     left, right = result
     assert (left.start, left.end) == (0.0, 3.0)
     assert (right.start, right.end) == (3.0, 6.0)
+    assert left.requested_start == pytest.approx(0.4)
+    assert right.requested_start is None
 
 
 def test_split_segment_rejects_edges_and_no_inner_keyframe() -> None:

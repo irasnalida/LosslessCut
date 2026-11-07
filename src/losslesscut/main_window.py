@@ -61,6 +61,8 @@ _VIDEO_FILTER = (
     "*.mpg *.mpeg *.3gp *.ogv *.vob);;All files (*.*)"
 )
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+# Smaller offsets are just keyframe timestamp rounding, not a real snap.
+_SNAP_WARNING_SECONDS = 0.05
 
 
 class MainWindow(QMainWindow):
@@ -246,7 +248,7 @@ class MainWindow(QMainWindow):
             "Mark segment end", "]", self._mark_segment_end, "hand-pointing"
         )
         self.mark_end_action.setToolTip(
-            "Extend the selected segment to the keyframe at or after the playhead"
+            "Extend the selected segment to the playhead"
         )
         self.delete_action = self._action(
             "&Delete segment", "Del", self._delete_selected, "trash"
@@ -733,10 +735,13 @@ class MainWindow(QMainWindow):
     def _mark_segment_start(self) -> None:
         if self.media is None:
             return
-        start = keyframe_at_or_before(self.keyframes, self.current_time)
+        requested = self.current_time
+        start = keyframe_at_or_before(self.keyframes, requested)
         if start is None:
             start = 0.0
         start = min(max(0.0, start), self.media.duration)
+        snap_back = requested - start
+        requested_start = requested if snap_back > _SNAP_WARNING_SECONDS else None
         end = keyframe_at_or_after(self.keyframes, start + 1e-3)
         if end is None:
             end = self.media.duration
@@ -758,6 +763,7 @@ class MainWindow(QMainWindow):
         )
         if existing is not None:
             selected = existing
+            self.segments[existing].requested_start = requested_start
             message = (
                 f"Selected existing segment {format_timecode(start)} – "
                 f"{format_timecode(end)}"
@@ -765,17 +771,22 @@ class MainWindow(QMainWindow):
         else:
             if self._is_default_full_segment():
                 self.segments = []
-            self.segments.append(Segment(start, end, True))
+            self.segments.append(Segment(start, end, True, requested_start))
             selected = len(self.segments) - 1
             message = (
                 f"Started segment {format_timecode(start)} – {format_timecode(end)}"
+            )
+        if requested_start is not None:
+            message += (
+                f"  ·  start snapped back {snap_back:.3f}s from "
+                f"{format_timecode(requested)} — that footage is included"
             )
 
         self.selected_segment = selected
         self._refresh_segments()
         self._seek_to(start)
         self.timeline_panel.ensure_time_visible(start)
-        self.statusBar().showMessage(message, 8000)
+        self.statusBar().showMessage(message, 12000)
 
     def _mark_segment_end(self) -> None:
         if self.media is None:
@@ -795,10 +806,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        end = keyframe_at_or_after(self.keyframes, self.current_time)
-        if end is None:
-            end = self.media.duration
-        end = min(max(0.0, end), self.media.duration)
+        end = min(max(0.0, self.current_time), self.media.duration)
         if end <= segment.start + 1e-6:
             self.statusBar().showMessage("Move the playhead after the segment start")
             return
@@ -809,7 +817,9 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self.segments[index] = Segment(segment.start, end, segment.enabled)
+        self.segments[index] = Segment(
+            segment.start, end, segment.enabled, segment.requested_start
+        )
         self.selected_segment = index
         self._refresh_segments()
         self.timeline_panel.ensure_time_visible(self.current_time)

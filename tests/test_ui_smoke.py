@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QLabel
 
 import losslesscut.main_window as main_window_module
 from losslesscut.models import Segment
@@ -37,6 +38,26 @@ def test_segment_panel_renders(qtbot, sample_media) -> None:
     assert "Total:" in panel.total_label.text()
     image = panel.grab().toImage()
     assert not image.isNull()
+
+
+def test_segment_panel_reports_snapped_start(qtbot, sample_media) -> None:
+    panel = SegmentPanel()
+    qtbot.addWidget(panel)
+    panel.resize(340, 500)
+    panel.set_segments(
+        [Segment(1.0, 2.0, requested_start=1.4), Segment(3.0, 4.5)],
+        sample_media,
+        0,
+    )
+
+    snapped = panel._cards[0]
+    texts = [label.text() for label in snapped.findChildren(QLabel)]
+    assert any("0.400s before your mark" in text for text in texts)
+    assert "00:00:01.400" in snapped.toolTip()
+    assert snapped.minimumHeight() == 84
+    assert snapped.maximumHeight() == 84
+    assert panel._cards[1].minimumHeight() == 66
+    assert not panel.grab().toImage().isNull()
 
 
 def test_main_window_smoke(qtbot, monkeypatch, tmp_path: Path, sample_media) -> None:
@@ -93,24 +114,31 @@ def test_mark_segment_start_and_end(
     window.current_time = 2.4
     window._mark_segment_start()
     assert [(s.start, s.end) for s in window.segments] == [(2.0, 3.0)]
+    assert window.segments[0].requested_start == pytest.approx(2.4)
     assert window.selected_segment == 0
     assert window.current_time == pytest.approx(2.0)
+    message = window.statusBar().currentMessage()
+    assert "snapped back 0.400s" in message
+    assert "00:00:02.400" in message
 
-    # Marking the end extends the selected segment to the next keyframe.
+    # Marking the end cuts exactly at the playhead, not the next keyframe.
     window.current_time = 4.6
     window._mark_segment_end()
-    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0)]
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 4.6)]
+    assert window.segments[0].requested_start == pytest.approx(2.4)
     assert window.selected_segment == 0
+    assert "00:00:04.600" in window.statusBar().currentMessage()
 
     # Extend-only: a playhead before the current end leaves it unchanged.
     window.current_time = 3.0
     window._mark_segment_end()
-    assert [(s.start, s.end) for s in window.segments] == [(2.0, 5.0)]
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 4.6)]
 
     # An earlier start is appended and sorted before existing segments.
     window.current_time = 0.2
     window._mark_segment_start()
-    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 5.0)]
+    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 4.6)]
+    assert window.segments[0].requested_start == pytest.approx(0.2)
     assert window.selected_segment == 0
 
     # Repeating the same start selects the existing segment.
@@ -123,7 +151,7 @@ def test_mark_segment_start_and_end(
     window.selected_segment = -1
     window.current_time = 5.5
     window._mark_segment_end()
-    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 6.0)]
+    assert [(s.start, s.end) for s in window.segments] == [(0.0, 1.0), (2.0, 5.5)]
     assert window.selected_segment == 1
 
     # With no segments, mark-end is a no-op.
@@ -133,6 +161,30 @@ def test_mark_segment_start_and_end(
     window._mark_segment_end()
     assert window.segments == []
 
+    window.close()
+
+
+def test_mark_start_on_keyframe_reports_no_snap(
+    qtbot, monkeypatch, tmp_path: Path, sample_media
+) -> None:
+    def make_settings(*args, **kwargs):
+        return QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+
+    monkeypatch.setattr(main_window_module, "QSettings", make_settings)
+    window = main_window_module.MainWindow()
+    qtbot.addWidget(window)
+    window.media = sample_media
+    window.keyframes = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    window.segments = [Segment(0.0, sample_media.duration)]
+    window.selected_segment = 0
+    monkeypatch.setattr(window.preview, "seek", lambda *args, **kwargs: None)
+
+    window.current_time = 2.0
+    window._mark_segment_start()
+
+    assert [(s.start, s.end) for s in window.segments] == [(2.0, 3.0)]
+    assert window.segments[0].requested_start is None
+    assert "snapped" not in window.statusBar().currentMessage()
     window.close()
 
 

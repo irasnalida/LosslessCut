@@ -126,11 +126,18 @@ class MediaInfo:
 
 @dataclass
 class Segment:
-    """An export range. Boundaries are always snapped to keyframes by the UI."""
+    """An export range.
+
+    Lossless stream copy cannot begin in the middle of a GOP, so the UI snaps
+    ``start`` back to a keyframe. ``requested_start`` keeps the original mark
+    when it had to be moved so the UI can report the included footage. The end
+    is cut at the requested time.
+    """
 
     start: float
     end: float
     enabled: bool = True
+    requested_start: float | None = None
 
     @property
     def duration(self) -> float:
@@ -349,22 +356,22 @@ def split_segment(
     if boundary - segment.start < epsilon or segment.end - boundary < epsilon:
         return None
     return (
-        Segment(segment.start, boundary, segment.enabled),
+        Segment(
+            segment.start,
+            boundary,
+            segment.enabled,
+            segment.requested_start,
+        ),
         Segment(boundary, segment.end, segment.enabled),
     )
 
 
-def clamp_segment(segment: Segment, duration: float, keyframes: list[float]) -> Segment:
+def clamp_segment(segment: Segment, duration: float) -> Segment:
     start = min(max(0.0, segment.start), duration)
     end = min(max(start, segment.end), duration)
-    if keyframes:
-        start = min(keyframes, key=lambda value: abs(value - start))
-        snapped_end = min(keyframes, key=lambda value: abs(value - end))
-        if abs(snapped_end - end) < 0.05 or snapped_end <= end:
-            end = snapped_end
     if end <= start:
         end = min(duration, start + (1.0 / 30.0))
-    return Segment(start, end, segment.enabled)
+    return Segment(start, end, segment.enabled, segment.requested_start)
 
 
 def total_duration(segments: list[Segment]) -> float:

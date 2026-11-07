@@ -15,7 +15,8 @@ ffmpeg.
   - keyframe boundaries
   - colored segment blocks
   - draggable playhead
-- Mark segment starts and ends at the playhead, split at the nearest keyframe, delete unwanted parts, and export the rest.
+- Mark segment starts (snapped back to the previous keyframe) and exact ends at the
+  playhead, split at the nearest keyframe, delete unwanted parts, and export the rest.
 - Create a segment by dropping a screenshot whose filename contains a `Thh'mm'ss'ms` timestamp.
 - Export each segment as a separate file, or concatenate the selected segments into one file.
 - Lossless output using `ffmpeg -c copy`; the video is never re-encoded.
@@ -147,10 +148,11 @@ separate file names, and the merged concatenation.
 The two hand buttons flanking the playback controls build segments without splitting:
 
 - **Mark start** (`[`, left hand) starts a new segment at the keyframe at or before the
-  playhead. It initially ends at the next keyframe.
-- **Mark end** (`]`, right hand) extends the selected segment to the first keyframe at or
-  after the playhead. It never moves an end backward, so place the playhead past the
-  current end.
+  playhead, and initially ends at the next keyframe. A lossless cut cannot begin in the
+  middle of a GOP, so marking between keyframes moves the start back. The status bar and
+  the segment card report how many seconds of extra footage are included.
+- **Mark end** (`]`, right hand) extends the selected segment to the playhead exactly.
+  It never moves an end backward, so place the playhead past the current end.
 
 Marking a start on the untouched full-length segment replaces it. Once other segments
 exist, new starts are appended and selected. If the same interval already exists, it is
@@ -202,7 +204,8 @@ preview jumps to the timestamp.
 
 ## How the lossless cut works
 
-Every segment boundary is a keyframe timestamp. Export runs ffmpeg with stream copy:
+A segment start must be a keyframe timestamp, but its end can fall on any packet.
+Export runs ffmpeg with stream copy:
 
 ```text
 ffmpeg -ss START -i INPUT -t DURATION -map 0 -c copy \
@@ -213,7 +216,10 @@ Because the video and audio packets are copied rather than decoded and re-encode
 output quality is identical to the source and exports are very fast. A few details follow
 from that:
 
-- The cut starts exactly at a keyframe.
+- The cut starts at the keyframe at or before your mark. When the mark is between
+  keyframes, the UI moves the start back and reports how much extra footage is included.
+- The cut ends at the requested time (to the nearest packet), so the tail is not padded
+  to the next keyframe.
 - Audio may extend slightly past the requested end because compressed audio frames do not
   align with video frames. This is normal for stream-copy cuts.
 - **All tracks** is enabled by default, so audio and subtitle streams are copied too.
@@ -259,7 +265,8 @@ automatically when ffmpeg is not available.
 
 ## Known limitations
 
-- Only keyframe-aligned boundaries are offered, by design.
+- Only keyframe-aligned segment starts are offered, by design; ends are cut at the
+  playhead.
 - Preview has no audio.
 - The timeline shows one video track; exporting still copies all selected streams.
 - Very unusual containers may reject stream-copy output; choose a compatible container or

@@ -32,7 +32,6 @@ class SegmentCard(QFrame):
         self.setObjectName("segmentCard")
         self.setProperty("selected", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(66)
 
         color = SEGMENT_COLORS[index % len(SEGMENT_COLORS)]
         badge = QLabel(str(index + 1), self)
@@ -56,6 +55,21 @@ class SegmentCard(QFrame):
         stats_label.setObjectName("muted")
         stats_label.setStyleSheet("color: #939da4; font-size: 11px;")
 
+        note_label = None
+        if segment.requested_start is not None:
+            included = segment.requested_start - segment.start
+            if included > 0.05:
+                note_label = QLabel(
+                    f"Start includes {included:.3f}s before your mark", self
+                )
+                note_label.setStyleSheet("color: #d8a657; font-size: 11px;")
+                self.setToolTip(
+                    "Lossless cuts must start on a keyframe. This segment starts "
+                    f"{included:.3f}s before your mark at "
+                    f"{format_timecode(segment.requested_start)}."
+                )
+        self.setFixedHeight(84 if note_label is not None else 66)
+
         remove_button = QToolButton(self)
         remove_button.setIcon(icon("x", "#879198", 14))
         remove_button.setIconSize(QSize(14, 14))
@@ -73,6 +87,8 @@ class SegmentCard(QFrame):
         text_layout.setSpacing(2)
         text_layout.addWidget(range_label)
         text_layout.addWidget(stats_label)
+        if note_label is not None:
+            text_layout.addWidget(note_label)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 7, 6, 7)
@@ -140,7 +156,7 @@ class SegmentPanel(QFrame):
         self.list = QListWidget(self)
         self.list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.list.setSpacing(2)
-        self.list.setUniformItemSizes(True)
+        self.list.setUniformItemSizes(False)
         self.list.currentRowChanged.connect(self._on_row_changed)
         self.list.itemDoubleClicked.connect(
             lambda item: self.segment_activated.emit(self.list.row(item))
