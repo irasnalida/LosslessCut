@@ -16,6 +16,7 @@ ffmpeg.
   - colored segment blocks
   - draggable playhead
 - Split segments at the nearest keyframe, delete unwanted parts, and export the rest.
+- Create a segment by dropping a screenshot whose filename contains a `Thh'mm'ss'ms` timestamp.
 - Export each segment as a separate file, or concatenate the selected segments into one file.
 - Lossless output using `ffmpeg -c copy`; the video is never re-encoded.
 - Dark Fusion theme with a segment list, duration/frame/size estimates and total duration.
@@ -92,6 +93,27 @@ uv run losslesscut "C:\Videos\movie.mp4"
 7. Pick **Separate files** or **Merge into one file**, then click **Export**.
 
 Existing files are never overwritten; a numeric suffix is added instead.
+
+### Creating segments from screenshots
+
+Drop an image whose filename contains a media-player timestamp in the form
+`Thh'mm'ss'ms`. For example:
+
+```text
+Outer Banks (2020) - S01E09 - The Bell Tower [WEBDL-1080p][EAC3 5.1][h265]-HONE-T00'38'07'285.png
+```
+
+The image itself is not read. `T00'38'07'285` is parsed as `00:38:07.285` and the
+keyframe interval containing that time becomes a segment. If the timestamp lands exactly
+on a keyframe, that keyframe starts the segment. The new segment is selected and the
+preview jumps to the timestamp.
+
+- The untouched full-length segment is replaced by the first dropped screenshot segment;
+  later images are appended.
+- Dropping an identical interval selects the existing segment instead of duplicating it.
+- Several images can be dropped at once.
+- Images dropped while the keyframe scan is running are queued and applied when it finishes.
+- Supported image extensions: `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.tif`, `.tiff`.
 
 ## Keyboard shortcuts
 
